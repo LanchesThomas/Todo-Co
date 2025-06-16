@@ -4,20 +4,21 @@ namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 
 /**
- * @ORM\Table("user")
  * @ORM\Entity
+ * @ORM\Table(name="user")
  * @UniqueEntity("email")
  */
-class User implements UserInterface
+class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
     /**
-     * @ORM\Column(type="integer")
      * @ORM\Id
-     * @ORM\GeneratedValue(strategy="AUTO")
+     * @ORM\GeneratedValue
+     * @ORM\Column(type="integer")
      */
     private $id;
 
@@ -39,52 +40,61 @@ class User implements UserInterface
      */
     private $email;
 
-    public function getId()
+    public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getUsername()
+    public function getUsername(): string
     {
         return $this->username;
     }
 
-    public function setUsername($username)
+    public function setUsername(string $username): self
     {
         $this->username = $username;
+        return $this;
     }
 
-    public function getSalt()
+    public function getUserIdentifier(): string
     {
-        return null;
+        return $this->username; // ou $this->email si tu veux t'authentifier par email
     }
 
-    public function getPassword()
+    public function getPassword(): string
     {
         return $this->password;
     }
 
-    public function setPassword($password)
+    public function setPassword(string $password): self
     {
         $this->password = $password;
+        return $this;
     }
 
-    public function getEmail()
+    public function getEmail(): string
     {
         return $this->email;
     }
 
-    public function setEmail($email)
+    public function setEmail(string $email): self
     {
         $this->email = $email;
+        return $this;
     }
 
-    public function getRoles()
+    public function getSalt(): ?string
     {
-        return array('ROLE_USER');
+        return null; // inutilisé avec bcrypt/argon2i
     }
 
-    public function eraseCredentials()
+    public function getRoles(): array
     {
+        return ['ROLE_USER'];
+    }
+
+    public function eraseCredentials(): void
+    {
+        // Si tu stockes des infos sensibles temporairement, nettoie-les ici
     }
 }
