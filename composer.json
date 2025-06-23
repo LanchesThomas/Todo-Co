@@ -33,11 +33,12 @@
     "symfony/form": "^7.0",
     "doctrine/annotations": "^1.0",
     "symfony/mailer": "^7.0",
-    "symfony/runtime": "^7.3"
+    "symfony/runtime": "^7.3",
+    "doctrine/doctrine-migrations-bundle": "^3.4"
   },
   "require-dev": {
-    "symfony/maker-bundle": "^1.63",
-    "symfony/phpunit-bridge": "^7.0"
+    "symfony/phpunit-bridge": "^7.0",
+    "symfony/maker-bundle": "^1.63"
   },
   "config": {
     "allow-plugins": {
