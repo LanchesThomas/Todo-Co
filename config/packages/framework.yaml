@@ -1,7 +1,6 @@
 framework:
     secret: '%env(APP_SECRET)%'
     router:
-        resource: '%kernel.project_dir%/config/routes.yaml'
         utf8: true
     csrf_protection: true
     session:
@@ -10,4 +9,5 @@ framework:
     default_locale: fr
     translator:
         default_path: '%kernel.project_dir%/translations'
-    validation: { enable_annotations: true }
+    validation:
+        enable_attributes: true

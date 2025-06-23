@@ -2,17 +2,22 @@
 
 namespace App\Controller;
 
-use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
 class DefaultController extends AbstractController
 {
-    /**
-     * @Route("/", name="homepage")
-     */
-    public function indexAction()
+    #[Route('/homepage', name: 'homepage')]
+    public function index()
     {
         return $this->render('default/index.html.twig');
     }
+
+    #[Route('/test', name: 'test')]
+    public function test(): Response
+    {
+        return new Response('Route test OK');
+    }
 }
+
