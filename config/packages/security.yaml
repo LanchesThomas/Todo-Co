@@ -18,8 +18,14 @@ security:
         main:
             pattern: ^/
             lazy: true
+            provider: doctrine
+            form_login:
+                login_path: login
+                check_path: login
+                enable_csrf: true
             logout:
                 path: logout
+                target: /
 
     access_control:
         - { path: ^/login, roles: PUBLIC_ACCESS }

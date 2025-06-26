@@ -7,10 +7,16 @@ use Symfony\Component\Routing\Attribute\Route;
 
 class DefaultController extends AbstractController
 {
-    #[Route('/homepage', name: 'homepage')]
+    #[Route('/', name: 'homepage')]
     public function index()
     {
-        return $this->render('default/index.html.twig');
+        if ($this->getUser()) {
+            return $this->render('default/index.html.twig');         
+
+        } else {
+            return $this->redirectToRoute('/login');
+        }   
+
     }
 }
 

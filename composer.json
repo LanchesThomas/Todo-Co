@@ -38,7 +38,8 @@
   },
   "require-dev": {
     "symfony/phpunit-bridge": "^7.0",
-    "symfony/maker-bundle": "^1.63"
+    "symfony/maker-bundle": "^1.63",
+    "symfony/web-profiler-bundle": "^7.3"
   },
   "config": {
     "allow-plugins": {
