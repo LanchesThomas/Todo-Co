@@ -10,3 +10,5 @@ services:
     App\:
         resource: '../src/*'
         exclude: '../src/{DependencyInjection,Entity,Migrations,Tests,Kernel.php}'
+    App\Twig\TaskExtension:
+        tags: ['twig.extension']

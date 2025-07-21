@@ -19,7 +19,7 @@ use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
     fields: ['username'],
     message: 'Ce nom d\'utilisateur est déjà utilisé.'
 )]
-#[ORM\Table(name: '"user"')]
+#[ORM\Table(name: '`user`')]
 class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
     #[ORM\Id]
