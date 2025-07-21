@@ -15,11 +15,24 @@ use App\Repository\TaskRepository;
 #[Route('/tasks')]
 class TaskController extends AbstractController
 {
+    /**
+     * TaskController constructor.
+     *
+     * Initializes the EntityManager and TaskRepository.
+     *
+     * @param EntityManagerInterface $entityManager
+     * @param TaskRepository $taskRepository
+     */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly TaskRepository $taskRepository,
     ) {}
 
+    /**
+     * Displays the list of tasks.
+     *
+     * @return Response
+     */
     #[Route('', name: 'task_list', methods: ['GET'])]
     public function list(): Response
     {
@@ -32,6 +45,11 @@ class TaskController extends AbstractController
         ]);
     }
 
+    /**
+     * Displays the list of completed tasks.
+     *
+     * @return Response
+     */
     #[Route('/done', name: 'task_list_done', methods: ['GET'])]
         public function doneList(): Response
     {
@@ -44,7 +62,12 @@ class TaskController extends AbstractController
         ]);
     }
 
-
+    /**
+     * Creates a new task.
+     *
+     * @param Request $request
+     * @return Response
+     */
     #[Route('/create', name: 'task_create', methods: ['GET', 'POST'])]
     public function create(Request $request): Response
     {
@@ -69,6 +92,13 @@ class TaskController extends AbstractController
         ]);
     }
 
+    /**
+     * Edits an existing task.
+     *
+     * @param Task $task
+     * @param Request $request
+     * @return Response
+     */
     #[Route('/{id}/edit', name: 'task_edit', methods: ['GET', 'POST'])]
     public function edit(Task $task, Request $request): Response
     {
@@ -94,7 +124,12 @@ class TaskController extends AbstractController
         ]);
     }
 
-
+    /**
+     * Toggles the completion status of a task.
+     *
+     * @param Task $task
+     * @return RedirectResponse
+     */
     #[Route('/{id}/toggle', name: 'task_toggle', methods: ['GET'])]
     public function toggle(Task $task): RedirectResponse
     {
@@ -110,7 +145,12 @@ class TaskController extends AbstractController
         return $this->redirectToRoute('task_list');
     }
 
-
+    /**
+     * Deletes a task.
+     *
+     * @param Task $task
+     * @return RedirectResponse
+     */
     #[Route('/{id}/delete', name: 'task_delete', methods: ['GET'])]
     public function delete(Task $task): RedirectResponse
     {
@@ -127,7 +167,12 @@ class TaskController extends AbstractController
         return $this->redirectToRoute('task_list');
     }
 
-
+    /**
+     * Checks if the current user can edit or delete the given task.
+     *
+     * @param Task $task The task to check.
+     * @return bool True if the user can edit or delete the task, false otherwise.
+     */
     private function canUserEditOrDelete(Task $task): bool
     {
         $currentUser = $this->getUser();

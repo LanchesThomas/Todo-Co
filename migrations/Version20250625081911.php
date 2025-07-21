@@ -12,14 +12,24 @@ use Doctrine\Migrations\AbstractMigration;
  */
 final class Version20250625081911 extends AbstractMigration
 {
+    /**
+     * Returns the description of the migration.
+     *
+     * This method provides a brief description of what this migration does.
+     *
+     * @return string The description of the migration.
+     */
     public function getDescription(): string
     {
         return '';
     }
-
+    
+    /**
+     * This up() migration is auto-generated, please modify it to your needs
+     */
     public function up(Schema $schema): void
     {
-        // this up() migration is auto-generated, please modify it to your needs
+        // This up() migration is auto-generated, please modify it to your needs
         $this->addSql(<<<'SQL'
             ALTER TABLE task ADD user_id INT DEFAULT NULL
         SQL);
@@ -34,9 +44,16 @@ final class Version20250625081911 extends AbstractMigration
         SQL);
     }
 
+    /**
+     * Reverts the migration from the database schema.
+     *
+     * This method is called when the migration is rolled back.
+     *
+     * @param Schema $schema The schema to revert the migration from.
+     */
     public function down(Schema $schema): void
     {
-        // this down() migration is auto-generated, please modify it to your needs
+        // This down() migration is auto-generated, please modify it to your needs
         $this->addSql(<<<'SQL'
             CREATE SCHEMA public
         SQL);
