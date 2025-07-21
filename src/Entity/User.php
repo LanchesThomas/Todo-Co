@@ -48,16 +48,30 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'json')]
     private array $roles = [];
 
+    /**
+     * User constructor.
+     */
     public function __construct()
     {
         $this->tasks = new ArrayCollection();
     }
 
+    /**
+     * Returns the ID of the user.
+     *
+     * @return int|null The ID of the user or null if not set.
+     */
     public function getId(): ?int
     {
         return $this->id;
     }
-
+    
+    /**
+     * Sets the ID of the user.
+     *
+     * @param int|null $id The ID to set.
+     * @return static Returns the current instance for method chaining.
+     */
     public function setId(?int $id): static
     {
         $this->id = $id;
@@ -65,6 +79,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    /**
+     * Returns the username.
+     */    
     public function getUsername(): ?string
     {
         return $this->username;
@@ -80,36 +97,72 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return (string) $this->email;
     }
 
+    /**
+     * Sets the username.
+     *
+     * @param string $username The username to set.
+     */
     public function setUsername($username): void
     {
         $this->username = $username;
     }
 
+    /**
+     * Returns the salt used to encode the password.
+     *
+     * @return string|null The salt or null if not used.
+     */
     public function getSalt(): ?string
     {
         return null;
     }
 
+    /**
+     * Returns the password.
+     *
+     * @see PasswordAuthenticatedUserInterface
+     */
     public function getPassword(): ?string
     {
         return $this->password;
     }
 
+    /**
+     * Sets the password.
+     *
+     * @param string $password The password to set.
+     */
     public function setPassword($password): void
     {
         $this->password = $password;
     }
 
+    /**
+     * Returns the email address of the user.
+     *
+     * @return string|null The email address or null if not set.
+     */
     public function getEmail(): ?string
     {
         return $this->email;
     }
 
+    /**
+     * Sets the email address of the user.
+     *
+     * @param string $email The email address to set.
+     */
     public function setEmail($email): void
     {
         $this->email = $email;
     }
 
+    /**
+     * Returns the roles of the user.
+     *
+     * @see UserInterface
+     * @return array<string> The roles of the user.
+     */
     public function getRoles(): array
     {
         $roles = $this->roles;
@@ -119,6 +172,11 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return array_unique($roles);
     }
 
+    /**
+     * Removes sensitive data from the user.
+     *
+     * @see UserInterface
+     */
     public function eraseCredentials(): void
     {
     }
@@ -131,6 +189,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this->tasks;
     }
 
+    /**
+     * Adds a task to the user's task collection.
+     *
+     * @param Task $task The task to add.
+     * @return static Returns the current instance for method chaining.
+     */
     public function addTask(Task $task): static
     {
         if (!$this->tasks->contains($task)) {
@@ -141,6 +205,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    /**
+     * Removes a task from the user's task collection.
+     *
+     * @param Task $task The task to remove.
+     * @return static Returns the current instance for method chaining.
+     */
     public function removeTask(Task $task): static
     {
         if ($this->tasks->removeElement($task)) {
@@ -153,6 +223,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    /**
+     * Sets the roles of the user.
+     *
+     * @param array<string> $roles The roles to set.
+     * @return static Returns the current instance for method chaining.
+     */
     public function setRoles(array $roles): static
     {
         $this->roles = $roles;
