@@ -36,16 +36,25 @@ class TaskExtension extends AbstractExtension
      * @param Task $task
      * @return bool
      */
-    public function canEditOrDelete(Task $task): bool
-{
-    $user = $this->security->getUser();
+   public function canEditOrDelete(Task $task): bool
+    {
+        $user = $this->security->getUser();
 
-    return
-        $task->getUser() === $user ||
-        (
-            $task->getUser()?->getUsername() === 'anonymous' &&
-            $this->security->isGranted('ROLE_ADMIN')
-        );
-}
+        // Pas d'utilisateur connecté → pas de droit
+        if (!$user) {
+            return false;
+        }
+
+        $taskOwner = $task->getUser();
+
+        // Si la tâche appartient à "anonymous", seuls les admins peuvent éditer/supprimer
+        if ($taskOwner && $taskOwner->getUsername() === 'anonymous') {
+            return $this->security->isGranted('ROLE_ADMIN');
+        }
+
+        // Sinon (tâche non-anonyme), seul le propriétaire peut éditer/supprimer
+        return $taskOwner === $user;
+    }
+
 
 }
