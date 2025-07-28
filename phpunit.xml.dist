@@ -1,31 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
-<!-- https://phpunit.de/manual/current/en/appendixes.configuration.html -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="http://schema.phpunit.de/4.8/phpunit.xsd"
-         backupGlobals="false"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.5/phpunit.xsd"
+         bootstrap="config/bootstrap.php"
          colors="true"
-         bootstrap="app/autoload.php"
->
+         backupGlobals="false">
+
     <php>
-        <ini name="error_reporting" value="-1" />
-        <server name="KERNEL_DIR" value="app/" />
+        <ini name="error_reporting" value="-1"/>
+        <server name="APP_ENV"      value="test"/>
+        <server name="KERNEL_CLASS" value="App\Kernel"/>
+        <server name="DATABASE_URL" value="sqlite:///:memory:"/>
     </php>
 
     <testsuites>
         <testsuite name="Project Test Suite">
-            <directory>tests</directory>
+            <directory suffix="Test.php">tests</directory>
         </testsuite>
     </testsuites>
 
-    <filter>
-        <whitelist>
-            <directory>src</directory>
-            <exclude>
-                <directory>src/*Bundle/Resources</directory>
-                <directory>src/*/*Bundle/Resources</directory>
-                <directory>src/*/Bundle/*Bundle/Resources</directory>
-            </exclude>
-        </whitelist>
-    </filter>
+    <!-- 1) Définition des fichiers “first‑party” -->
+    <source>
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+        <exclude>
+            <directory>src/*Bundle/Resources</directory>
+            <directory>src/*/*Bundle/Resources</directory>
+            <directory>src/*/Bundle/*Bundle/Resources</directory>
+        </exclude>
+    </source>
+    <!-- The <source> element remplace l’ancien <filter><whitelist>…</whitelist></filter> :contentReference[oaicite:0]{index=0} -->
+
+    <!-- 2) Configuration de la génération du rapport de couverture -->
+    <coverage includeUncoveredFiles="false">
+        <report>
+            <html outputDirectory="coverage" lowUpperBound="50" highLowerBound="90"/>
+        </report>
+    </coverage>
+    <!-- L’attribut includeUncoveredFiles permet de n’inclure que les fichiers partiellement couverts :contentReference[oaicite:1]{index=1} -->
+
 </phpunit>

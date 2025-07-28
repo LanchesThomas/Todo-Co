@@ -1,0 +1,20 @@
+# config/packages/test/security.yaml
+security:
+    # on ajoute un provider en mémoire pour les tests
+    providers:
+        in_memory_test:
+            memory:
+                users:
+                    testuser:
+                        password: null
+                        roles: ['ROLE_USER']
+
+    firewalls:
+        main:
+            # le même nom que votre firewall "main" en prod…
+            provider: in_memory_test
+            # doit être identique à votre config prod (form_login, etc.)
+            # ici on le rend non stateless pour permettre session+loginUser()
+            stateless: false
+            # si vous avez du form_login en prod, laissez-le aussi
+            # form_login: ~
