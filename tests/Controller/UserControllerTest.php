@@ -1,134 +1,276 @@
 <?php
-// tests/Controller/UserControllerTest.php
+
 namespace App\Tests\Controller;
 
-use App\Controller\UserController;
 use App\Entity\User;
-use App\Repository\UserRepository;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Doctrine\ORM\Tools\SchemaTool;
 use Doctrine\ORM\EntityManagerInterface;
-use PHPUnit\Framework\TestCase;
-use Symfony\Component\Form\FormInterface;
-use Symfony\Component\Form\FormView;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
-class UserControllerTest extends TestCase
+class UserControllerTest extends WebTestCase
 {
-    private EntityManagerInterface $em;
-    private UserRepository $repo;
+    private $client;
+    private ?EntityManagerInterface $em;
+    private User $admin;
+    private User $user1;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->em   = $this->createMock(EntityManagerInterface::class);
-        $this->repo = $this->createMock(UserRepository::class);
+
+        $this->client = static::createClient();
+        $container = self::getContainer();
+        $this->em = $container->get('doctrine')->getManager();
+
+        // Recréation propre du schéma
+        $meta = $this->em->getMetadataFactory()->getAllMetadata();
+        if (!empty($meta)) {
+            $schemaTool = new SchemaTool($this->em);
+            $schemaTool->dropSchema($meta);
+            $schemaTool->createSchema($meta);
+        }
+
+        /** @var UserPasswordHasherInterface $hasher */
+        $hasher = $container->get('security.user_password_hasher');
+
+        // Création d'un admin pour les tests
+        $this->admin = new User();
+        $this->admin->setUsername('admin');
+        $this->admin->setEmail('admin@example.com');
+        $this->admin->setRoles(['ROLE_ADMIN']);
+        $this->admin->setPassword($hasher->hashPassword($this->admin, '123456'));
+
+        // Création d'un utilisateur simple pour les tests
+        $this->user1 = new User();
+        $this->user1->setUsername('user1');
+        $this->user1->setEmail('user1@example.com');
+        $this->user1->setRoles(['ROLE_USER']);
+        $this->user1->setPassword($hasher->hashPassword($this->user1, '123456'));
+
+        $this->em->persist($this->admin);
+        $this->em->persist($this->user1);
+        $this->em->flush();
     }
 
-    public function testListRendersUsers(): void
+    protected function tearDown(): void
     {
-        $users = [new User(), new User()];
-        $controller = $this->getMockBuilder(UserController::class)
-            ->setConstructorArgs([$this->em, $this->repo])
-            ->onlyMethods(['render'])
-            ->getMock();
+        parent::tearDown();
 
-        $this->repo->expects($this->once())
-            ->method('findAll')
-            ->willReturn($users);
-
-        $controller->expects($this->once())
-            ->method('render')
-            ->with('user/list.html.twig', ['users' => $users])
-            ->willReturn(new Response());
-
-        $response = $controller->list();
-        $this->assertInstanceOf(Response::class, $response);
+        if ($this->em) {
+            $this->em->close();
+            $this->em = null;
+        }
     }
 
-    public function testCreateRendersFormWhenNotSubmitted(): void
+    private function performLogin(string $usernameOrEmail, string $password): void
     {
-        $controller = $this->getMockBuilder(UserController::class)
-            ->setConstructorArgs([$this->em, $this->repo])
-            ->onlyMethods(['createForm', 'render'])
-            ->getMock();
+        $crawler = $this->client->request('GET', '/login');
+        $this->assertResponseIsSuccessful();
 
-        $form = $this->createMock(FormInterface::class);
-        $form->expects($this->once())->method('handleRequest');
-        $form->expects($this->once())->method('isSubmitted')->willReturn(false);
-        $form->expects($this->never())->method('isValid');
-        $view = $this->createMock(FormView::class);
-        $form->expects($this->once())->method('createView')->willReturn($view);
+        $this->assertSelectorExists('input[name="_username"]');
+        $this->assertSelectorExists('input[name="_password"]');
 
-        $controller->expects($this->once())
-            ->method('createForm')
-            ->with('App\\Form\\UserType', $this->isInstanceOf(User::class))
-            ->willReturn($form);
+        $form = $crawler->selectButton('Se connecter')->form([
+            '_username' => $usernameOrEmail,
+            '_password' => $password,
+        ]);
+        $this->client->submit($form);
 
-        $controller->expects($this->once())
-            ->method('render')
-            ->with('user/create.html.twig', ['form' => $view])
-            ->willReturn(new Response());
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
 
-        $request = new Request();
-        $hasher = $this->createMock(UserPasswordHasherInterface::class);
-        $response = $controller->create($request, $hasher);
-        $this->assertInstanceOf(Response::class, $response);
+        $this->assertSelectorTextContains('h1', "Bienvenue");
     }
 
-    public function testCreatePersistsAndRedirectsWhenValid(): void
+    private function loginEntityUser(string $username): void
     {
-        $controller = $this->getMockBuilder(UserController::class)
-            ->setConstructorArgs([$this->em, $this->repo])
-            ->onlyMethods(['createForm', 'addFlash', 'redirectToRoute'])
-            ->getMock();
+        $user = $this->em->getRepository(User::class)->findOneBy(['username' => $username]);
+        $this->assertNotNull($user, "L'utilisateur $username doit exister en base pour se connecter.");
+        $this->client->loginUser($user);
+    }
 
-        // Prépare le form stub
-        $form = $this->createMock(FormInterface::class);
-        $form->expects($this->once())->method('handleRequest');
-        $form->expects($this->once())->method('isSubmitted')->willReturn(true);
-        $form->expects($this->once())->method('isValid')->willReturn(true);
+    public function testListActionWithoutLogin(): void
+    {
+        $this->client->request('GET', '/users');
+        $this->assertResponseStatusCodeSame(302);
+        $this->assertResponseRedirects('/login');
+    }
 
-        // roles field
-        $roleField = $this->createMock(FormInterface::class);
-        $roleField->expects($this->once())->method('getData')->willReturn('ROLE_USER');
-        $form->expects($this->once())->method('get')->with('roles')->willReturn($roleField);
+    public function testListActionWithSimpleUser(): void
+    {
+        $this->loginEntityUser('user1');
 
-        // Simule que le formulaire a rempli le mot de passe
-        $controller->expects($this->once())
-            ->method('createForm')
-            ->with(
-                'App\\Form\\UserType',
-                $this->callback(function(User $u) {
-                    $u->setPassword('plainPass');
-                    return true;
-                })
-            )
-            ->willReturn($form);
+        $this->client->request('GET', '/users');
+        $this->assertResponseStatusCodeSame(403); // Accès interdit car pas ROLE_ADMIN
+    }
 
-        // Password hasher
-        $hasher = $this->createMock(UserPasswordHasherInterface::class);
-        $hasher->expects($this->once())
-            ->method('hashPassword')
-            ->with($this->isInstanceOf(User::class), 'plainPass')
-            ->willReturn('hashedPass');
+    public function testListActionWithAdmin(): void
+    {
+        $this->loginEntityUser('admin');
 
-        $this->em->expects($this->once())->method('persist');
-        $this->em->expects($this->once())->method('flush');
+        $this->client->request('GET', '/users');
+        $this->assertResponseIsSuccessful();
+    }
 
-        $controller->expects($this->once())
-            ->method('addFlash')
-            ->with('success', "L'utilisateur a bien été ajouté.");
+    public function testCreateActionWithoutLogin(): void
+    {
+        $this->client->request('GET', '/users/create');
+        $this->assertResponseStatusCodeSame(302);
+        $this->assertResponseRedirects('/login');
+    }
 
-        $redirect = new RedirectResponse('/users');
-        $controller->expects($this->once())
-            ->method('redirectToRoute')
-            ->with('user_list')
-            ->willReturn($redirect);
+    public function testCreateActionWithSimpleUser(): void
+    {
+        $this->loginEntityUser('user1');
 
-        $request = new Request();
-        $response = $controller->create($request, $hasher);
-        $this->assertSame($redirect, $response);
+        $this->client->request('GET', '/users/create');
+        $this->assertResponseStatusCodeSame(403); // Accès interdit car pas ROLE_ADMIN
+    }
+
+    public function testCreateActionWithAdmin(): void
+    {
+        $this->loginEntityUser('admin');
+
+        $crawler = $this->client->request('GET', '/users/create');
+        $this->assertResponseIsSuccessful();
+
+        // Vérifier que le formulaire est présent
+        $this->assertSelectorExists('input[name="user[username]"]');
+        $this->assertSelectorExists('input[name="user[email]"]');
+        $this->assertSelectorExists('input[name="user[password][first]"]');
+        $this->assertSelectorExists('input[name="user[password][second]"]');
+        $this->assertSelectorExists('select[name="user[roles]"]');
+
+        // Soumettre le formulaire
+        $form = $crawler->selectButton('Ajouter')->form([
+            'user[username]' => 'newuser',
+            'user[email]' => 'newuser@example.com',
+            'user[password][first]' => 'password123',
+            'user[password][second]' => 'password123',
+            'user[roles]' => 'ROLE_USER',
+        ]);
+        $this->client->submit($form);
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        // Vérifier le message de succès
+        $this->assertSelectorTextContains('div.alert.alert-success', "L'utilisateur a bien été ajouté.");
+
+        // Vérifier que l'utilisateur a été créé en base
+        $newUser = $this->em->getRepository(User::class)->findOneBy(['username' => 'newuser']);
+        $this->assertNotNull($newUser);
+        $this->assertEquals('newuser@example.com', $newUser->getEmail());
+        $this->assertEquals(['ROLE_USER'], $newUser->getRoles());
+    }
+
+    public function testEditActionWithoutLogin(): void
+    {
+        $this->client->request('GET', '/users/1/edit');
+        $this->assertResponseStatusCodeSame(302);
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testEditActionWithSimpleUser(): void
+    {
+        $this->loginEntityUser('user1');
+
+        $this->client->request('GET', '/users/1/edit');
+        $this->assertResponseStatusCodeSame(403); // Accès interdit car pas ROLE_ADMIN
+    }
+
+    public function testEditActionWithAdmin(): void
+    {
+        $this->loginEntityUser('admin');
+
+        $crawler = $this->client->request('GET', '/users/1/edit');
+        $this->assertResponseIsSuccessful();
+
+        // Vérifier que le formulaire est présent et pré-rempli
+        $this->assertSelectorExists('input[name="user[username]"]');
+        $this->assertSelectorExists('input[name="user[email]"]');
+        $this->assertSelectorExists('input[name="user[password][first]"]');
+        $this->assertSelectorExists('input[name="user[password][second]"]');
+        $this->assertSelectorExists('select[name="user[roles]"]');
+
+        // Modifier l'utilisateur
+        $form = $crawler->selectButton('Modifier')->form([
+            'user[username]' => 'admin_modified',
+            'user[email]' => 'admin_modified@example.com',
+            'user[password][first]' => 'newpassword123',
+            'user[password][second]' => 'newpassword123',
+            'user[roles]' => 'ROLE_ADMIN',
+        ]);
+        $this->client->submit($form);
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        // Vérifier le message de succès
+        $this->assertSelectorTextContains('div.alert.alert-success', "L'utilisateur a bien été modifié.");
+
+        // Vérifier que l'utilisateur a été modifié en base
+        $this->em->refresh($this->admin);
+        $this->assertEquals('admin_modified', $this->admin->getUsername());
+        $this->assertEquals('admin_modified@example.com', $this->admin->getEmail());
+    }
+
+    public function testEditActionWithNonExistentUser(): void
+    {
+        $this->loginEntityUser('admin');
+
+        $this->client->request('GET', '/users/-100/edit');
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testCreateActionWithInvalidData(): void
+    {
+        $this->loginEntityUser('admin');
+
+        $crawler = $this->client->request('GET', '/users/create');
+        $this->assertResponseIsSuccessful();
+
+        // Soumettre le formulaire avec des données invalides (email manquant)
+        $form = $crawler->selectButton('Ajouter')->form([
+            'user[username]' => 'invaliduser',
+            'user[email]' => '', // Email vide
+            'user[password][first]' => 'password123',
+            'user[password][second]' => 'password123',
+            'user[roles]' => 'ROLE_USER',
+        ]);
+        $this->client->submit($form);
+
+        // Le formulaire doit être re-affiché avec des erreurs
+        $this->assertResponseIsSuccessful();
+        // Note: Tu peux ajouter des vérifications d'erreurs spécifiques selon ton formulaire
+    }
+
+    public function testEditActionWithoutPasswordChange(): void
+    {
+        $this->loginEntityUser('admin');
+
+        $crawler = $this->client->request('GET', '/users/1/edit');
+        $this->assertResponseIsSuccessful();
+
+        // Modifier seulement l'username, laisser les champs password vides
+        $form = $crawler->selectButton('Modifier')->form([
+            'user[username]' => 'admin_username_only',
+            'user[email]' => $this->admin->getEmail(),
+            'user[password][first]' => '', // Champs password vides
+            'user[password][second]' => '',
+            'user[roles]' => 'ROLE_ADMIN',
+        ]);
+        $this->client->submit($form);
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        // Vérifier que l'utilisateur a été modifié
+        $this->em->refresh($this->admin);
+        $this->assertEquals('admin_username_only', $this->admin->getUsername());
     }
 }

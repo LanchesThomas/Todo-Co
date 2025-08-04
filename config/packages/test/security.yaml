@@ -5,9 +5,12 @@ security:
         in_memory_test:
             memory:
                 users:
-                    testuser:
-                        password: null
+                    user1:
+                        password: "$2y$13$bkyZi3Rlo7OtKzY/Wtdd2uO9xnflp5CH0uF3MYaIeEkeDk9GJx9hy"
                         roles: ['ROLE_USER']
+                    admin:
+                        password: "$2y$13$VfT5eJ.w0soSvaq5iPEtne5NIdLM797lr55M2FjFI6CNp8cixude6"
+                        roles: ['ROLE_ADMIN']
 
     firewalls:
         main:
