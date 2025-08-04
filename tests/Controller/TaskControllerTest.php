@@ -1,191 +1,320 @@
 <?php
-// tests/Controller/TaskControllerTest.php
+
 namespace App\Tests\Controller;
 
-use App\Controller\TaskController;
 use App\Entity\Task;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Doctrine\ORM\Tools\SchemaTool;
 use App\Entity\User;
-use App\Repository\TaskRepository;
 use Doctrine\ORM\EntityManagerInterface;
-use PHPUnit\Framework\TestCase;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
-class TaskControllerTest extends TestCase
+class TaskControllerTest extends WebTestCase
 {
-    private EntityManagerInterface $em;
-    private TaskRepository $repo;
+    private $client;
+    private ?EntityManagerInterface $em;
+    private User $user1;
+    private User $user2;
+    private User $admin;
+    private User $anonymous;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->em = $this->createMock(EntityManagerInterface::class);
-        $this->repo = $this->createMock(TaskRepository::class);
+
+        $this->client = static::createClient();
+        $container = self::getContainer();
+        $this->em = $container->get('doctrine')->getManager();
+
+        // Recréation propre du schéma
+        $meta = $this->em->getMetadataFactory()->getAllMetadata();
+        if (!empty($meta)) {
+            $schemaTool = new SchemaTool($this->em);
+            $schemaTool->dropSchema($meta);
+            $schemaTool->createSchema($meta);
+        }
+
+        /** @var UserPasswordHasherInterface $hasher */
+        $hasher = $container->get('security.user_password_hasher');
+
+        // Création des utilisateurs
+        $this->user1 = new User();
+        $this->user1->setUsername('user1');
+        $this->user1->setEmail('user1@example.com');
+        $this->user1->setRoles(['ROLE_USER']);
+        $this->user1->setPassword($hasher->hashPassword($this->user1, '123456'));
+
+        $this->user2 = new User();
+        $this->user2->setUsername('user2');
+        $this->user2->setEmail('user2@example.com');
+        $this->user2->setRoles(['ROLE_USER']);
+        $this->user2->setPassword($hasher->hashPassword($this->user2, '123456'));
+
+        $this->admin = new User();
+        $this->admin->setUsername('admin');
+        $this->admin->setEmail('admin@example.com');
+        $this->admin->setRoles(['ROLE_ADMIN']);
+        $this->admin->setPassword($hasher->hashPassword($this->admin, '123456'));
+
+        $this->anonymous = new User();
+        $this->anonymous->setUsername('anonymous');
+        $this->anonymous->setEmail('anonymous@example.com');
+        $this->anonymous->setRoles(['ROLE_USER']);
+        $this->anonymous->setPassword($hasher->hashPassword($this->anonymous, '123456'));
+
+        $this->em->persist($this->user1);
+        $this->em->persist($this->user2);
+        $this->em->persist($this->admin);
+        $this->em->persist($this->anonymous);
+
+        // Création des tâches de test
+        $task1 = new Task();
+        $task1->setTitle('Tâche de user1');
+        $task1->setContent('Contenu de la tâche 1');
+        $task1->setUser($this->user1);
+        $task1->toggle(false);
+
+        $task2 = new Task();
+        $task2->setTitle('Tâche de user1 à supprimer');
+        $task2->setContent('Contenu de la tâche 2');
+        $task2->setUser($this->user1);
+        $task2->toggle(false);
+
+        $task3 = new Task();
+        $task3->setTitle('Tâche anonyme');
+        $task3->setContent('Contenu de la tâche anonyme');
+        $task3->setUser($this->anonymous);
+        $task3->toggle(false);
+
+        $task4 = new Task();
+        $task4->setTitle('Tâche de user2');
+        $task4->setContent('Contenu de la tâche de user2');
+        $task4->setUser($this->user2);
+        $task4->toggle(false);
+
+        $this->em->persist($task1);
+        $this->em->persist($task2);
+        $this->em->persist($task3);
+        $this->em->persist($task4);
+        $this->em->flush();
     }
 
-    public function testListRendersTasksAndUser(): void
+    protected function tearDown(): void
     {
-        $tasks = [new Task(), new Task()];
-        $user = $this->createMock(User::class);
+        parent::tearDown();
 
-        $controller = $this->getMockBuilder(TaskController::class)
-            ->setConstructorArgs([$this->em, $this->repo])
-            ->onlyMethods(['getUser', 'render'])
-            ->getMock();
-
-        $controller->expects($this->once())
-            ->method('getUser')
-            ->willReturn($user);
-
-        $this->repo->expects($this->once())
-            ->method('findAll')
-            ->willReturn($tasks);
-
-        $controller->expects($this->once())
-            ->method('render')
-            ->with('task/list.html.twig', [
-                'tasks' => $tasks,
-                'user' => $user,
-            ])
-            ->willReturn(new Response());
-
-        $response = $controller->list();
-        $this->assertInstanceOf(Response::class, $response);
+        if ($this->em) {
+            $this->em->close();
+            $this->em = null;
+        }
     }
 
-    public function testDoneListRendersOnlyDoneTasks(): void
+    private function performLogin(string $usernameOrEmail, string $password): void
     {
-        $doneTasks = [new Task()];
-        $user = $this->createMock(User::class);
+        $crawler = $this->client->request('GET', '/login');
+        $this->assertResponseIsSuccessful();
 
-        $controller = $this->getMockBuilder(TaskController::class)
-            ->setConstructorArgs([$this->em, $this->repo])
-            ->onlyMethods(['getUser', 'render'])
-            ->getMock();
+        $this->assertSelectorExists('input[name="_username"]');
+        $this->assertSelectorExists('input[name="_password"]');
 
-        $controller->expects($this->once())
-            ->method('getUser')
-            ->willReturn($user);
+        $form = $crawler->selectButton('Se connecter')->form([
+            '_username' => $usernameOrEmail,
+            '_password' => $password,
+        ]);
+        $this->client->submit($form);
 
-        $this->repo->expects($this->once())
-            ->method('findBy')
-            ->with(['isDone' => true])
-            ->willReturn($doneTasks);
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
 
-        $controller->expects($this->once())
-            ->method('render')
-            ->with('task/list.html.twig', [
-                'tasks' => $doneTasks,
-                'user' => $user,
-            ])
-            ->willReturn(new Response());
-
-        $response = $controller->doneList();
-        $this->assertInstanceOf(Response::class, $response);
+        $this->assertSelectorTextContains('h1', "Bienvenue");
     }
 
-    public function testToggleChangesStatusAndRedirects(): void
+    private function loginEntityUser(string $username): void
     {
-        $task = $this->createMock(Task::class);
-        // Simule tâche déjà faite, on passe à non faite (toggle(false))
-        $task->expects($this->exactly(2))
-            ->method('isDone')
-            ->willReturnOnConsecutiveCalls(true, false);
-        $task->expects($this->once())
-            ->method('toggle')
-            ->with(false);
-
-        $this->em->expects($this->once())
-            ->method('flush');
-
-        $controller = $this->getMockBuilder(TaskController::class)
-            ->setConstructorArgs([$this->em, $this->repo])
-            ->onlyMethods(['addFlash', 'redirectToRoute'])
-            ->getMock();
-
-        $controller->expects($this->once())
-            ->method('addFlash')
-            ->with(
-                'success',
-                sprintf(
-                    'La tâche "%s" a bien été marquée comme %s.',
-                    null,
-                    'non faite'
-                )
-            );
-
-        $fakeRedirect = new RedirectResponse('/tasks');
-        $controller->expects($this->once())
-            ->method('redirectToRoute')
-            ->with('task_list')
-            ->willReturn($fakeRedirect);
-
-        $response = $controller->toggle($task);
-        $this->assertSame($fakeRedirect, $response);
+        $user = $this->em->getRepository(User::class)->findOneBy(['username' => $username]);
+        $this->assertNotNull($user, "L'utilisateur $username doit exister en base pour se connecter.");
+        $this->client->loginUser($user);
     }
 
-    public function testDeleteNotAllowedRedirectsWithErrorFlash(): void
+    public function testListActionWithoutLogin(): void
     {
-        $task = $this->createMock(Task::class);
-        $user = $this->createMock(User::class);
+        $this->client->request('GET', '/tasks');
+        $this->assertResponseStatusCodeSame(302);
+        $this->assertResponseRedirects('/login');
+        $this->client->followRedirect();
 
-        $controller = $this->getMockBuilder(TaskController::class)
-            ->setConstructorArgs([$this->em, $this->repo])
-            ->onlyMethods(['getUser', 'addFlash', 'redirectToRoute'])
-            ->getMock();
-
-        $controller->expects($this->once())
-            ->method('getUser')
-            ->willReturn($user);
-
-        $controller->expects($this->once())
-            ->method('addFlash')
-            ->with('error', 'Vous ne pouvez pas supprimer cette tâche.');
-
-        $fakeRedirect = new RedirectResponse('/tasks');
-        $controller->expects($this->once())
-            ->method('redirectToRoute')
-            ->with('task_list')
-            ->willReturn($fakeRedirect);
-
-        $response = $controller->delete($task);
-        $this->assertSame($fakeRedirect, $response);
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('input[name="_username"]');
+        $this->assertSelectorExists('input[name="_password"]');
     }
 
-    public function testDeleteAllowedRemovesAndRedirects(): void
+    public function testListAction(): void
     {
-        $task = $this->createMock(Task::class);
-        $user = $this->createMock(User::class);
+        $this->performLogin('user1', '123456');
 
-        $this->em->expects($this->once())
-            ->method('remove')
-            ->with($task);
-        $this->em->expects($this->once())
-            ->method('flush');
+        $this->client->request('GET', '/tasks');
+        $this->assertResponseIsSuccessful();
+    }
 
-        $controller = $this->getMockBuilder(TaskController::class)
-            ->setConstructorArgs([$this->em, $this->repo])
-            ->onlyMethods(['getUser', 'addFlash', 'redirectToRoute'])
-            ->getMock();
+    public function testCreateAction(): void
+    {
+        $this->loginEntityUser('user1');
 
-        $controller->expects($this->once())
-            ->method('getUser')
-            ->willReturn($user);
-        $task->expects($this->once())
-            ->method('getUser')
-            ->willReturn($user);
+        $crawler = $this->client->request('GET', '/tasks/create');
+        $this->assertResponseIsSuccessful();
 
-        $controller->expects($this->once())
-            ->method('addFlash')
-            ->with('success', 'La tâche a bien été supprimée.');
+        $this->assertSelectorExists('input[name="task[title]"]');
+        $this->assertSelectorExists('textarea[name="task[content]"]');
 
-        $fakeRedirect = new RedirectResponse('/tasks');
-        $controller->expects($this->once())
-            ->method('redirectToRoute')
-            ->with('task_list')
-            ->willReturn($fakeRedirect);
+        $form = $crawler->selectButton('Ajouter')->form([
+            'task[title]' => 'Nouvelle tâche',
+            'task[content]' => 'Ceci est une tâche crée par un test',
+        ]);
+        $this->client->submit($form);
+        $this->assertResponseStatusCodeSame(302);
 
-        $response = $controller->delete($task);
-        $this->assertSame($fakeRedirect, $response);
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+    }
+
+    public function testEditAction(): void
+    {
+        $this->loginEntityUser('user1');
+
+        $crawler = $this->client->request('GET', '/tasks/1/edit');
+        $this->assertResponseIsSuccessful();
+
+        $this->assertSelectorExists('input[name="task[title]"]');
+        $this->assertSelectorExists('textarea[name="task[content]"]');
+
+        $form = $crawler->selectButton('Modifier')->form([
+            'task[title]' => 'Modification de tache',
+            'task[content]' => 'Je modifie une tache',
+        ]);
+        $this->client->submit($form);
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+    }
+
+    public function testDeleteTaskAction(): void
+    {
+        $this->performLogin('user1', '123456');
+
+        $this->client->request('GET', '/tasks/2/delete');
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        // Message exact du contrôleur
+        $this->assertSelectorTextContains('div.alert.alert-success', "La tâche a bien été supprimée.");
+    }
+
+    public function testDeleteTaskActionWhereSimpleUserIsNotAuthor(): void
+    {
+        $this->performLogin('user1', '123456');
+
+        $this->client->request('GET', '/tasks/4/delete');
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        // Message exact du contrôleur
+        $this->assertSelectorTextContains(
+            'div.alert.alert-danger',
+            "Vous ne pouvez pas supprimer cette tâche."
+        );
+    }
+
+    public function testDeleteTaskActionWithSimpleUserWhereAuthorIsAnonymous(): void
+    {
+        $this->performLogin('user1', '123456');
+
+        $this->client->request('GET', '/tasks/3/delete');
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        // Message exact du contrôleur
+        $this->assertSelectorTextContains(
+            'div.alert.alert-danger',
+            "Vous ne pouvez pas supprimer cette tâche."
+        );
+    }
+
+    public function testDeleteTaskActionWithAdminWhereAuthorIsAnonymous(): void
+    {
+        $this->performLogin('admin', '123456');
+
+        $this->client->request('GET', '/tasks/3/delete');
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        // L'admin peut supprimer les tâches anonymes
+        $this->assertSelectorTextContains('div.alert.alert-success', "La tâche a bien été supprimée.");
+    }
+
+    public function testDeleteTaskActionWhereItemDontExists(): void
+    {
+        $this->performLogin('user1', '123456');
+
+        $this->client->request('GET', '/tasks/-100/delete');
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+     public function testDoneListAction(): void
+    {
+        $this->loginEntityUser('user1');
+
+        $task = $this->em->getRepository(Task::class)->find(1);
+        $task->toggle(true);
+        $this->em->flush();
+
+        $this->client->request('GET', '/tasks/done');
+        $this->assertResponseIsSuccessful();
+    }
+
+    public function testDoneListActionWithoutLogin(): void
+    {
+        $this->client->request('GET', '/tasks/done');
+        $this->assertResponseStatusCodeSame(302);
+        $this->assertResponseRedirects('/login');
+    }
+
+    public function testToggleTaskAction(): void
+    {
+        $this->performLogin('user1', '123456');
+
+        $this->client->request('GET', '/tasks/1/toggle');
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        // Vérifier le message de toggle
+        $this->assertSelectorTextContains('div.alert.alert-success', 'a bien été marquée comme');
+    }
+
+    public function testEditActionWithUnauthorizedUser(): void
+    {
+        $this->loginEntityUser('user1');
+
+        // Essayer de modifier la tâche de user2 (ID 4)
+        $this->client->request('GET', '/tasks/4/edit');
+        $this->assertResponseStatusCodeSame(302);
+
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        $this->assertSelectorTextContains(
+            'div.alert.alert-danger',
+            "Vous ne pouvez pas modifier cette tâche."
+        );
     }
 }

@@ -1,78 +1,141 @@
 <?php
-// tests/Controller/SecurityControllerTest.php
+
 namespace App\Tests\Controller;
 
-use App\Controller\SecurityController;
-use PHPUnit\Framework\TestCase;
-use Symfony\Component\HttpFoundation\RedirectResponse;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
-use Symfony\Component\Security\Core\User\UserInterface;
-use Symfony\Component\Security\Core\Exception\AuthenticationException;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Doctrine\ORM\Tools\SchemaTool;
+use App\Entity\User;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
-class SecurityControllerTest extends TestCase
+class SecurityControllerTest extends WebTestCase
 {
-    public function testLoginRedirectsToHomeWhenAuthenticated(): void
+    private \Symfony\Bundle\FrameworkBundle\KernelBrowser $client;
+    private ?EntityManagerInterface $em = null;
+    private User $user;
+    private User $admin;
+
+    protected function setUp(): void
     {
-        $controller = $this->getMockBuilder(SecurityController::class)
-            ->onlyMethods(['getUser', 'redirectToRoute'])
-            ->getMock();
+        parent::setUp();
+        self::ensureKernelShutdown(); // garantir un kernel propre pour createClient
+        $this->client = static::createClient();
 
-        // Retourne un stub conforme à UserInterface
-        $userStub = $this->createMock(UserInterface::class);
-        $controller->expects($this->once())
-            ->method('getUser')
-            ->willReturn($userStub);
+        $container = self::getContainer();
+        $this->em = $container->get('doctrine')->getManager();
 
-        $fakeRedirect = new RedirectResponse('/');
-        $controller->expects($this->once())
-            ->method('redirectToRoute')
-            ->with('/')
-            ->willReturn($fakeRedirect);
+        // Recréation du schéma (utile avec sqlite:///:memory:)
+        $meta = $this->em->getMetadataFactory()->getAllMetadata();
+        if (!empty($meta)) {
+            $schemaTool = new SchemaTool($this->em);
+            $schemaTool->dropSchema($meta);
+            $schemaTool->createSchema($meta);
+        }
 
-        $response = $controller->login($this->createMock(AuthenticationUtils::class));
-        $this->assertSame($fakeRedirect, $response);
+        /** @var UserPasswordHasherInterface $hasher */
+        $hasher = $container->get('security.user_password_hasher');
+
+        // Création de user1
+        $this->user = new User();
+        $this->user->setUsername('user1');
+        $this->user->setEmail('user1@example.com');
+        $this->user->setRoles(['ROLE_USER']);
+        $this->user->setPassword($hasher->hashPassword($this->user, '123456'));
+
+        // Création de admin
+        $this->admin = new User();
+        $this->admin->setUsername('admin');
+        $this->admin->setEmail('admin@example.com');
+        $this->admin->setRoles(['ROLE_ADMIN']);
+        $this->admin->setPassword($hasher->hashPassword($this->admin, '123456'));
+
+        $this->em->persist($this->user);
+        $this->em->persist($this->admin);
+        $this->em->flush();
     }
 
-    public function testLoginRendersFormWhenNotAuthenticated(): void
+    protected function tearDown(): void
     {
-        $controller = $this->getMockBuilder(SecurityController::class)
-            ->onlyMethods(['getUser', 'render'])
-            ->getMock();
+        parent::tearDown();
 
-        $controller->expects($this->once())
-            ->method('getUser')
-            ->willReturn(null);
-
-        // Stub AuthenticationUtils retournant une AuthenticationException
-        $authUtils = $this->createMock(AuthenticationUtils::class);
-        $authException = new AuthenticationException('Bad credentials');
-        $authUtils->expects($this->once())
-            ->method('getLastAuthenticationError')
-            ->willReturn($authException);
-        $authUtils->expects($this->once())
-            ->method('getLastUsername')
-            ->willReturn('john.doe');
-
-        $fakeResponse = new Response('<form>login</form>', 200);
-        $controller->expects($this->once())
-            ->method('render')
-            ->with('security/login.html.twig', [
-                'last_username' => 'john.doe',
-                'error' => $authException,
-            ])
-            ->willReturn($fakeResponse);
-
-        $response = $controller->login($authUtils);
-        $this->assertSame($fakeResponse, $response);
+        if ($this->em) {
+            $this->em->close();
+            $this->em = null;
+        }
     }
 
-    public function testLogoutThrowsLogicException(): void
+    public function testLogin(): void
     {
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('This method can be blank');
+        $crawler = $this->client->request('GET', '/login');
+        $this->assertResponseIsSuccessful();
 
-        $controller = new SecurityController();
-        $controller->logout();
+        $this->assertSelectorExists('input[name="_username"]');
+        $this->assertSelectorExists('input[name="_password"]');
+
+        $form = $crawler->selectButton('Se connecter')->form([
+            '_username' => 'user1',
+            '_password' => '123456',
+        ]);
+        $this->client->submit($form);
+
+        // Doit rediriger vers la home
+        $this->assertTrue($this->client->getResponse()->isRedirection());
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        $this->assertSelectorTextContains('h1', 'Bienvenue');
     }
+
+    public function testLoginAsAdmin(): void
+    {
+        $crawler = $this->client->request('GET', '/login');
+        $this->assertResponseIsSuccessful();
+
+        $form = $crawler->selectButton('Se connecter')->form([
+            '_username' => 'admin',
+            '_password' => '123456',
+        ]);
+        $this->client->submit($form);
+
+        $this->assertTrue($this->client->getResponse()->isRedirection());
+        $crawler = $this->client->followRedirect();
+        $this->assertResponseIsSuccessful();
+
+        $this->assertSelectorTextContains('h1', 'Bienvenue');
+    }
+
+    public function testLoginWithWrongCredentials(): void
+    {
+        $crawler = $this->client->request('GET', '/login');
+        $this->assertResponseIsSuccessful();
+
+        $form = $crawler->selectButton('Se connecter')->form([
+            '_username' => 'user1',
+            '_password' => 'WrongPassword',
+        ]);
+        $this->client->submit($form);
+
+        // Peut renvoyer sur /login avec redirection ou pas
+        if ($this->client->getResponse()->isRedirection()) {
+            $crawler = $this->client->followRedirect();
+        }
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('div.alert.alert-danger');
+        $this->assertStringContainsString(
+            'Identifiants invalides.',
+            $crawler->filter('div.alert.alert-danger')->text()
+        );
+    }
+
+    public function testAlreadyAuthenticatedIsRedirectedFromLogin(): void
+    {
+        // Authentifier directement l'utilisateur persisted
+        $this->client->loginUser($this->user);
+
+        // Aller sur /login doit renvoyer vers /
+        $this->client->request('GET', '/login');
+        $this->assertResponseRedirects('/');
+    }
+
 }
