@@ -1,0 +1,14 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Erreur interne{% endblock %}
+
+{% block body %}
+    <div class="container text-center my-5">
+        <h1 class="display-3">500</h1>
+        <p class="lead">
+            Oups… une erreur interne est survenue sur le serveur.<br>
+            Nos équipes ont été prévenues et travaillent à corriger le problème.
+        </p>
+        <a href="{{ path('task_list') }}" class="btn btn-primary mt-3">Retour à l’accueil</a>
+    </div>
+{% endblock %}

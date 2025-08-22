@@ -36,7 +36,7 @@ class TaskController extends AbstractController
     #[Route('', name: 'task_list', methods: ['GET'])]
     public function list(): Response
     {
-        $tasks = $this->taskRepository->findAll();
+        $tasks = $this->taskRepository->findBy([], ['createdAt' => 'DESC']);
         $user = $this->getUser();
 
         return $this->render('task/list.html.twig', [
@@ -53,7 +53,7 @@ class TaskController extends AbstractController
     #[Route('/done', name: 'task_list_done', methods: ['GET'])]
         public function doneList(): Response
     {
-        $tasks = $this->taskRepository->findBy(['isDone' => true]);
+        $tasks = $this->taskRepository->findBy(['isDone' => true], ['createdAt' => 'DESC']);
         $user = $this->getUser();
 
         return $this->render('task/list.html.twig', [
@@ -102,19 +102,14 @@ class TaskController extends AbstractController
     #[Route('/{id}/edit', name: 'task_edit', methods: ['GET', 'POST'])]
     public function edit(Task $task, Request $request): Response
     {
-        if (!$this->canUserEditOrDelete($task)) {
-            $this->addFlash('error', 'Vous ne pouvez pas modifier cette tâche.');
-            return $this->redirectToRoute('task_list');
-        }
+        // $this->denyAccessUnlessGranted('TASK_EDIT', $task);
 
         $form = $this->createForm(TaskType::class, $task);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
             $this->entityManager->flush();
-
             $this->addFlash('success', 'La tâche a bien été modifiée.');
-
             return $this->redirectToRoute('task_list');
         }
 
@@ -122,6 +117,30 @@ class TaskController extends AbstractController
             'form' => $form->createView(),
             'task' => $task,
         ]);
+    }
+
+    /**
+     * Deletes a task.
+     *
+     * @param Task $task
+     * @return RedirectResponse
+     */
+    #[Route('/{id}/delete', name: 'task_delete', methods: ['POST'])]
+    public function delete(Task $task, Request $request): RedirectResponse
+    {
+        // $this->denyAccessUnlessGranted('TASK_DELETE', $task);
+
+        // (Optionnel mais recommandé) Vérif CSRF
+        if (!$this->isCsrfTokenValid('delete_task_'.$task->getId(), $request->request->get('_token'))) {
+            $this->addFlash('error', 'Token CSRF invalide.');
+            return $this->redirectToRoute('task_list');
+        }
+
+        $this->entityManager->remove($task);
+        $this->entityManager->flush();
+
+        $this->addFlash('success', 'La tâche a bien été supprimée.');
+        return $this->redirectToRoute('task_list');
     }
 
     /**
@@ -144,46 +163,5 @@ class TaskController extends AbstractController
 
         return $this->redirectToRoute('task_list');
     }
-
-    /**
-     * Deletes a task.
-     *
-     * @param Task $task
-     * @return RedirectResponse
-     */
-    #[Route('/{id}/delete', name: 'task_delete', methods: ['GET'])]
-    public function delete(Task $task): RedirectResponse
-    {
-        if (!$this->canUserEditOrDelete($task)) {
-            $this->addFlash('error', 'Vous ne pouvez pas supprimer cette tâche.');
-            return $this->redirectToRoute('task_list');
-        }
-
-        $this->entityManager->remove($task);
-        $this->entityManager->flush();
-
-        $this->addFlash('success', 'La tâche a bien été supprimée.');
-
-        return $this->redirectToRoute('task_list');
-    }
-
-    /**
-     * Checks if the current user can edit or delete the given task.
-     *
-     * @param Task $task The task to check.
-     * @return bool True if the user can edit or delete the task, false otherwise.
-     */
-    private function canUserEditOrDelete(Task $task): bool
-    {
-        $currentUser = $this->getUser();
-
-        return
-            $task->getUser() === $currentUser ||
-            (
-                $task->getUser()?->getUsername() === 'anonymous'
-                && $this->isGranted('ROLE_ADMIN')
-            );
-    }
-
 
 }
